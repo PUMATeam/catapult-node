@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"time"
+
+	"google.golang.org/grpc/keepalive"
 
 	log "github.com/sirupsen/logrus"
 
@@ -15,7 +18,7 @@ import (
 
 func init() {
 	// TODO make configurable
-	f, err := os.OpenFile("catapult-node.log", os.O_WRONLY|os.O_CREATE, 0755)
+	f, err := os.OpenFile("catapult-node.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -30,8 +33,15 @@ func Start(port int) {
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	server := grpc.NewServer()
+	server := grpc.NewServer(grpc.KeepaliveParams(
+		keepalive.ServerParameters{
+			Timeout: 1 * time.Minute,
+		}),
+	)
 
 	node.RegisterNodeServer(server, &service.NodeService{})
-	server.Serve(lis)
+	if err := server.Serve(lis); err != nil {
+		log.Error(err)
+	}
+
 }

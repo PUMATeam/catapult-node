@@ -12,10 +12,10 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
+	"github.com/firecracker-microvm/firecracker-go-sdk"
 	models "github.com/firecracker-microvm/firecracker-go-sdk/client/models"
 
 	node "github.com/PUMATeam/catapult-node/pb"
-	firecracker "github.com/firecracker-microvm/firecracker-go-sdk"
 )
 
 const (
@@ -24,13 +24,12 @@ const (
 	vmLogs            = "fc-logs"
 )
 
-func runVMM(ctx context.Context, vmCfg *node.VmConfig) error {
-	vmLog := filepath.Join(vmLogs, fmt.Sprintf("%s.log", vmCfg.GetVmID().GetValue()))
-	vmMetrics := filepath.Join(vmLogs, fmt.Sprintf("%s-metrics.log", vmCfg.GetVmID().GetValue()))
+//TODO better name needed
+type fcHandler struct {
+	vmID string
+}
 
-	vmLogFifo := filepath.Join(vmLogs, vmCfg.GetVmID().GetValue()+"-log.fifo")
-	vmMetricsFifo := filepath.Join(vmLogs, vmCfg.GetVmID().GetValue()+"-metrics.fifo")
-
+func (f *fcHandler) runVMM(ctx context.Context, vmCfg *node.VmConfig, logger log.Logger) error {
 	if _, err := os.Stat(vmDataPath); err != nil {
 		os.Mkdir(vmDataPath, os.ModeDir)
 	}
@@ -66,37 +65,53 @@ func runVMM(ctx context.Context, vmCfg *node.VmConfig) error {
 		// TODO move to a constant
 		// TODO extract
 		LogLevel:    "Debug",
-		LogFifo:     vmLogFifo,
-		MetricsFifo: vmMetricsFifo,
+		LogFifo:     f.getFileNameByMethod("fifo", "log"),
+		MetricsFifo: f.getFileNameByMethod("fifo", "metrics"),
 	}
 
 	cmd := firecracker.VMCommandBuilder{}.
 		WithBin(firecrackerBinary).
 		WithSocketPath(socketPath).
 		WithStdin(os.Stdin).
-		WithStdout(os.Stdout).
 		WithStderr(os.Stderr).
 		Build(ctx)
 
-	m, err := firecracker.NewMachine(ctx, cfg, firecracker.WithProcessRunner(cmd))
+	log.Infof("Creating new machine definition %v", cfg)
+	m, err := firecracker.NewMachine(ctx,
+		cfg,
+		firecracker.WithProcessRunner(cmd),
+		firecracker.WithLogger(log.NewEntry(&logger)))
 	if err != nil {
 		return fmt.Errorf("Failed creating machine: %s", err)
 	}
-	if err := m.Start(ctx); err != nil {
-		return fmt.Errorf("failed to start machine: %v", err)
+
+	log.Info("Starting machine...")
+	errChan := make(chan error, 1)
+	go func() {
+		errChan <- m.Start(context.Background())
+	}()
+
+	select {
+	case err = <-errChan:
+		if err != nil {
+			log.Error("fc error", err)
+		}
+	case <-time.After(3 * time.Second):
+		log.Info("No errors after 3 seconds, assuming success")
 	}
 
-	// TODO why is this needed?
-	defer m.StopVMM()
 	installSignalHandlers(ctx, m)
-	go readPipe(vmLogFifo, vmLog)
-	go readPipe(vmMetricsFifo, vmMetrics)
 
-	if err := m.Wait(ctx); err != nil {
-		return fmt.Errorf("wait returned an error %s", err)
+	return err
+}
+
+func (f *fcHandler) getFileNameByMethod(typ, method string) string {
+	var marker string
+	if method == "metrics" {
+		marker = "-metrics"
 	}
 
-	return nil
+	return filepath.Join(vmLogs, fmt.Sprintf("%s%s.%s", f.vmID, marker, typ))
 }
 
 func installSignalHandlers(ctx context.Context, m *firecracker.Machine) {
@@ -119,17 +134,20 @@ func installSignalHandlers(ctx context.Context, m *firecracker.Machine) {
 	}()
 }
 
-func readPipe(path, out string) {
-	pipe, err := os.OpenFile(path, os.O_RDONLY, os.ModeNamedPipe)
+func (f *fcHandler) readPipe(method string) {
+	pipePath := f.getFileNameByMethod("fifo", method)
+	logPath := f.getFileNameByMethod("log", method)
+
+	pipe, err := os.OpenFile(pipePath, os.O_RDONLY, os.ModeNamedPipe)
 	if err != nil {
 		log.Error(err)
 	}
 
 	var output *os.File
-	if _, err := os.Stat(out); err != nil {
-		output, err = os.Create(out)
+	if _, err := os.Stat(logPath); err != nil {
+		output, err = os.Create(logPath)
 		if err != nil {
-			log.Errorf("Failed to create log file %s, %s", out, err)
+			log.Errorf("Failed to create log file %s, %s", logPath, err)
 		}
 	}
 
