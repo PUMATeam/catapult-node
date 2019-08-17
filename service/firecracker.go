@@ -26,7 +26,11 @@ const (
 
 //TODO better name needed
 type fcHandler struct {
-	vmID string
+	vmID          string
+	tapDeviceName string
+	ipAddress     string
+	macAddress    string
+	bridgeIP      string
 }
 
 func (f *fcHandler) runVMM(ctx context.Context,
@@ -51,7 +55,13 @@ func (f *fcHandler) runVMM(ctx context.Context,
 	socketPath := filepath.Join(vmDataPath, vmCfg.GetVmID().GetValue())
 	os.Remove(socketPath)
 
+	log.Infof("tap device name %s", f.tapDeviceName)
+	kernelArgs :=
+		fmt.Sprintf("console=ttyS0 noapic reboot=k panic=1 pci=off nomodules rw ip=%s::%s:%s::eth0:off",
+			f.ipAddress, f.bridgeIP, "255.255.255.0")
+
 	cfg := firecracker.Config{
+		KernelArgs:      kernelArgs,
 		KernelImagePath: vmCfg.GetKernelImage(),
 		SocketPath:      socketPath,
 		Drives: []models.Drive{{
@@ -63,7 +73,12 @@ func (f *fcHandler) runVMM(ctx context.Context,
 		MachineCfg: models.MachineConfiguration{
 			VcpuCount:  firecracker.Int64(vmCfg.GetVcpus()),
 			MemSizeMib: firecracker.Int64(vmCfg.GetMemory()),
+			HtEnabled:  firecracker.Bool(true),
 		},
+		NetworkInterfaces: []firecracker.NetworkInterface{{
+			HostDevName: f.tapDeviceName,
+			MacAddress:  f.macAddress,
+		}},
 		// TODO move to a constant
 		// TODO extract
 		LogLevel:    "Debug",
@@ -141,6 +156,7 @@ func (f *fcHandler) readPipe(method string) {
 	pipe, err := os.OpenFile(pipePath, os.O_RDONLY, os.ModeNamedPipe)
 	if err != nil {
 		log.Error(err)
+		return
 	}
 
 	var output *os.File

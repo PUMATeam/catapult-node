@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"fmt"
+	"math/rand"
+	"strconv"
 
 	"github.com/firecracker-microvm/firecracker-go-sdk"
 
@@ -20,8 +22,49 @@ type NodeService struct {
 // StartVM starts a firecracker VM with the provided configuration
 func (ns *NodeService) StartVM(ctx context.Context, cfg *node.VmConfig) (*node.Response, error) {
 	log.Debug("Starting VM", cfg.GetVmID().GetValue())
+
+	// TOOD has to be improved....
+	vmID := strconv.Itoa(rand.Intn(10))
+	tapDeviceName := fmt.Sprintf("%s-%s", "fc", vmID)
+	bridgeIP, err := getBridgeIP()
+	log.Infof("bridge IP %s", bridgeIP)
+	if err != nil {
+		log.Error("Failed to get bridge ip ", err)
+		return &node.Response{
+			Status: node.Response_FAILED,
+		}, err
+	}
+
+	_, err = createTapDevice(tapDeviceName)
+	if err != nil {
+		log.Error("Failed to create tap device ", err)
+		return &node.Response{
+			Status: node.Response_FAILED,
+		}, err
+
+	}
+
+	_, err = addTapToBridge(tapDeviceName, fcBridgeName)
+
+	ip, err := findAvailableIP()
+	if err != nil {
+		log.Error("Failed to find IP address ", err)
+		return &node.Response{
+			Status: node.Response_FAILED,
+		}, err
+	}
+
+	log.Infof("Found available IP %s", ip)
+
+	// TODO major improvements required
+	macAddress := "02:FC:00:00:00:0" + vmID
+	log.Infof("mac address for vm: %s", macAddress)
 	fch := &fcHandler{
-		vmID: cfg.GetVmID().GetValue(),
+		vmID:          cfg.GetVmID().GetValue(),
+		tapDeviceName: tapDeviceName,
+		macAddress:    macAddress,
+		ipAddress:     ip,
+		bridgeIP:      bridgeIP,
 	}
 
 	m, err := fch.runVMM(context.Background(), cfg, log.Logger{})
