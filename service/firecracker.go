@@ -61,8 +61,8 @@ func (f *fcHandler) runVMM(ctx context.Context,
 			IsReadOnly:   firecracker.Bool(false),
 		}},
 		MachineCfg: models.MachineConfiguration{
-			VcpuCount:  vmCfg.GetVcpus(),
-			MemSizeMib: vmCfg.GetMemory(),
+			VcpuCount:  firecracker.Int64(vmCfg.GetVcpus()),
+			MemSizeMib: firecracker.Int64(vmCfg.GetMemory()),
 		},
 		// TODO move to a constant
 		// TODO extract
