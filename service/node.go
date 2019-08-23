@@ -108,12 +108,12 @@ func (ns *NodeService) StopVM(ctx context.Context, uuid *node.UUID) (*node.Respo
 	}, nil
 }
 
-func (ns *NodeService) ListVMs(context.Context, *empty.Empty) (*node.VmList, error) {
+func (ns *NodeService) ListVMs(context.Context, *empty.Empty) (*VmList, error) {
 	log.Debug("ListVMs called")
 	vmList := new(node.VmList)
 	uuid := &node.UUID{
 		Value: "poop",
 	}
-	vmList.VmID = uuid
+	vmList.VmID = []*node.UUID{uuid}
 	return vmList, nil
 }
