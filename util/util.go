@@ -40,3 +40,14 @@ func ExecuteCommandsPiped(command string, args []string, command2 string, args2 
 	_ = cmd2.Wait()
 	return string(bytes.TrimSpace(out.Bytes())), nil
 }
+
+func RemoveFromSlice(s interface{}, i int) interface{} {
+	// TODO add type checking to make this generic
+	// and add better error-handling
+	tmp := s.([]string)
+	copy(tmp[i:], tmp[i+1:])
+	tmp[len(tmp)-1] = ""
+	tmp = tmp[:len(tmp)-1]
+
+	return tmp
+}

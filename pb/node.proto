@@ -12,6 +12,7 @@ message VmConfig {
     int64 vcpus = 3;
     string kernelImage = 4;
     string rootFileSystem = 5;
+    string address = 6;
 }
 
 message Response {
@@ -21,6 +22,7 @@ message Response {
     }
 
     RequestStatus status = 1;
+    VmConfig config = 2;
 }
 
 message VmList {
