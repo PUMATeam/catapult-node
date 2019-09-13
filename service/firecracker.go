@@ -31,6 +31,7 @@ type fcHandler struct {
 	ipAddress     string
 	macAddress    string
 	bridgeIP      string
+	netmask       string
 }
 
 func (f *fcHandler) runVMM(ctx context.Context,
@@ -58,7 +59,7 @@ func (f *fcHandler) runVMM(ctx context.Context,
 	log.Infof("tap device name %s", f.tapDeviceName)
 	kernelArgs :=
 		fmt.Sprintf("console=ttyS0 noapic reboot=k panic=1 pci=off nomodules rw ip=%s::%s:%s::eth0:off",
-			f.ipAddress, f.bridgeIP, "255.255.255.0")
+			f.ipAddress, f.bridgeIP, f.netmask)
 
 	cfg := firecracker.Config{
 		KernelArgs:      kernelArgs,

@@ -31,9 +31,11 @@ func addTapToBridge(tapName, bridgeName string) (string, error) {
 
 func findAvailableIP() (string, error) {
 	// TODO handle errors
-	bridgeIP, _ := getBridgeIP()
+	bridgeIP, _ := getBridge()
 	if len(ips) == 0 {
-		cmd := fmt.Sprintf("nmap -v -sn -n %s -oG - | awk '/Status: Down/{print $2}'", bridgeIP)
+		// TODO make conversion safe
+		cmd := fmt.Sprintf("nmap -v -sn -n %s -oG - | awk '/Status: Down/{print $2}'",
+			bridgeIP.String())
 		out, err := util.ExecuteCommand("bash", "-c", cmd)
 		if err != nil {
 			log.Error(err)
@@ -50,20 +52,20 @@ func findAvailableIP() (string, error) {
 	return ips[1], nil
 }
 
-func getBridgeIP() (string, error) {
+func getBridge() (net.Addr, error) {
 	iface, err := net.InterfaceByName(fcBridgeName)
 	if err != nil {
 		log.Error(err)
-		return "", err
+		return nil, err
 	}
 
 	addrs, err := iface.Addrs()
 	if err != nil {
 		log.Error(err)
-		return "", err
+		return nil, err
 	}
 
-	return addrs[0].String(), nil
+	return addrs[0], nil
 }
 
 func generateMACAddress() (string, error) {
