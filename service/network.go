@@ -25,6 +25,15 @@ func createTapDevice(tapName string) (string, error) {
 	return util.ExecuteCommand("ip", "link", "set", tapName, "up")
 }
 
+func deleteDevice(tapName string) error {
+	_, err := util.ExecuteCommand("ip", "link", "del", tapName)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func addTapToBridge(tapName, bridgeName string) (string, error) {
 	return util.ExecuteCommand("brctl", "addif", bridgeName, tapName)
 }
@@ -33,7 +42,6 @@ func findAvailableIP() (string, error) {
 	// TODO handle errors
 	bridgeIP, _ := getBridge()
 	if len(ips) == 0 {
-		// TODO make conversion safe
 		cmd := fmt.Sprintf("nmap -v -sn -n %s -oG - | awk '/Status: Down/{print $2}'",
 			bridgeIP.String())
 		out, err := util.ExecuteCommand("bash", "-c", cmd)

@@ -142,14 +142,11 @@ func setupNetwork(tapDeviceName string) (*fcNetwork, error) {
 		"MAC": macAddress,
 	}).Info("Generated MAC address")
 
-	log.Infof("%v %v", bridgeAddr.(*net.IPNet).IP.String(),
-		net.IP(bridgeIP.Mask).String())
-	fc := &fcNetwork{
+	return &fcNetwork{
 		ip: ip,
 		// TODO extract and make safe
 		bridgeIP:   bridgeAddr.(*net.IPNet).IP.String(),
 		netmask:    net.IP(bridgeIP.Mask).String(),
 		macAddress: macAddress,
-	}
-	return fc, nil
+	}, nil
 }
