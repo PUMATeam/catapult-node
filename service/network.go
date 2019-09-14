@@ -25,8 +25,8 @@ func createTapDevice(tapName string) (string, error) {
 	return util.ExecuteCommand("ip", "link", "set", tapName, "up")
 }
 
-func deleteDevice(tapName string) error {
-	_, err := util.ExecuteCommand("ip", "link", "del", tapName)
+func deleteDevice(deviceName string) error {
+	_, err := util.ExecuteCommand("ip", "link", "del", deviceName)
 	if err != nil {
 		return err
 	}

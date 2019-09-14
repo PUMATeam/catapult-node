@@ -66,22 +66,26 @@ func (ns *NodeService) StartVM(ctx context.Context, cfg *node.VmConfig) (*node.R
 
 func (ns *NodeService) StopVM(ctx context.Context, uuid *node.UUID) (*node.Response, error) {
 	log.Debug("StopVM called on VM ", uuid.GetValue())
-	if v, ok := ns.Machines[uuid.GetValue()]; !ok {
+	v, ok := ns.Machines[uuid.GetValue()]
+	if !ok {
 		log.Errorf("VM %s not found", uuid.GetValue())
 		return &node.Response{
 			Status: node.Response_FAILED,
 		}, fmt.Errorf("VM %s not found", uuid.GetValue())
-	} else {
-		err := v.StopVMM()
-		if err != nil {
-			log.Error("Failed to stop VM ", uuid.GetValue())
-			return &node.Response{
-				Status: node.Response_FAILED,
-			}, err
-		}
+	}
+	err := v.StopVMM()
+	if err != nil {
+		log.Error("Failed to stop VM ", uuid.GetValue())
+		return &node.Response{
+			Status: node.Response_FAILED,
+		}, err
 	}
 
 	log.Infof("Stopped VM %s", uuid.GetValue())
+	log.Infof("Cleaning up...")
+
+	vmID := uuid.GetValue()
+	deleteDevice(fmt.Sprintf("%s-%s", "fc", vmID[len(vmID)-6:]))
 
 	return &node.Response{
 		Status: node.Response_SUCCESSFUL,

@@ -18,11 +18,19 @@ import (
 	"google.golang.org/grpc"
 )
 
+const (
+	logFile = "catapult-node.log"
+)
+
 func init() {
 	// TODO make configurable
-	f, err := os.OpenFile("catapult-node.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		log.Fatal(err)
+	var f *os.File
+	if _, err := os.Stat(logFile); err != nil {
+		f, err = os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			log.Fatal(err)
+		}
+
 	}
 
 	log.SetOutput(f)
