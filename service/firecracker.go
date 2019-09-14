@@ -25,7 +25,7 @@ const (
 )
 
 //TODO better name needed
-type fcHandler struct {
+type fc struct {
 	vmID          string
 	tapDeviceName string
 	ipAddress     string
@@ -34,7 +34,7 @@ type fcHandler struct {
 	netmask       string
 }
 
-func (f *fcHandler) runVMM(ctx context.Context,
+func (f *fc) runVMM(ctx context.Context,
 	vmCfg *node.VmConfig,
 	logger log.Logger) (*firecracker.Machine, error) {
 	if _, err := os.Stat(vmDataPath); err != nil {
@@ -123,7 +123,7 @@ func (f *fcHandler) runVMM(ctx context.Context,
 	return m, err
 }
 
-func (f *fcHandler) getFileNameByMethod(typ, method string) string {
+func (f *fc) getFileNameByMethod(typ, method string) string {
 	var marker string
 	if method == "metrics" {
 		marker = "-metrics"
@@ -152,7 +152,7 @@ func installSignalHandlers(ctx context.Context, m *firecracker.Machine) {
 	}()
 }
 
-func (f *fcHandler) readPipe(method string) {
+func (f *fc) readPipe(method string) {
 	pipePath := f.getFileNameByMethod("fifo", method)
 	logPath := f.getFileNameByMethod("log", method)
 

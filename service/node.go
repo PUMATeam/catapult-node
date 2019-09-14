@@ -27,16 +27,17 @@ func (ns *NodeService) StartVM(ctx context.Context, cfg *node.VmConfig) (*node.R
 	log.Infof("Setting up network...")
 	tapDeviceName := fmt.Sprintf("%s-%s", "fc", vmID[len(vmID)-6:])
 	network, err := setupNetwork(tapDeviceName)
-	log.Infof("%v", network)
+
 	if err != nil {
 		log.Error(err)
 		return &node.Response{
 			Status: node.Response_FAILED,
 		}, err
 	}
+
 	cfg.Address = network.ip
 
-	fch := &fcHandler{
+	fch := &fc{
 		vmID:          cfg.GetVmID().GetValue(),
 		tapDeviceName: tapDeviceName,
 		macAddress:    network.macAddress,
