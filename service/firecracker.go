@@ -79,9 +79,11 @@ func (f *fcHandler) runVMM(ctx context.Context,
 		NetworkInterfaces: []firecracker.NetworkInterface{{
 			HostDevName: f.tapDeviceName,
 			MacAddress:  f.macAddress,
+			AllowMMDS:   true,
 		}},
 		// TODO move to a constant
 		// TODO extract
+
 		LogLevel:    "Debug",
 		LogFifo:     f.getFileNameByMethod("fifo", "log"),
 		MetricsFifo: f.getFileNameByMethod("fifo", "metrics"),
