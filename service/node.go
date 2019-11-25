@@ -114,6 +114,7 @@ func (ns *NodeService) CreateDrive(ctx context.Context, img *node.ImageName) (*n
 
 	path, size, err := createRootFS(path)
 	if err != nil {
+		log.Error(err)
 		return &node.DriveResponse{
 			Status: node.Status_FAILED,
 			Size:   -1,

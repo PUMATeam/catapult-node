@@ -26,7 +26,7 @@ func init() {
 	// TODO make configurable
 	var f *os.File
 	if _, err := os.Stat(logFile); err != nil {
-		f, err = os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		f, err = os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0755)
 		if err != nil {
 			log.Fatal(err)
 		}
