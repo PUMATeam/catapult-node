@@ -7,10 +7,9 @@ import (
 	"time"
 
 	"github.com/firecracker-microvm/firecracker-go-sdk"
+	"github.com/sirupsen/logrus"
 
 	"google.golang.org/grpc/keepalive"
-
-	log "github.com/sirupsen/logrus"
 
 	node "github.com/PUMATeam/catapult-node/pb"
 	"github.com/PUMATeam/catapult-node/service"
@@ -22,8 +21,11 @@ const (
 	logFile = "catapult-node.log"
 )
 
+var log *logrus.Logger
+
 func init() {
 	// TODO make configurable
+	log = logrus.New()
 	var f *os.File
 	if _, err := os.Stat(logFile); err != nil {
 		f, err = os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0755)
@@ -34,7 +36,7 @@ func init() {
 	}
 
 	log.SetOutput(f)
-	log.SetLevel(log.DebugLevel)
+	log.SetLevel(logrus.DebugLevel)
 }
 
 // Start starts catapult node server
@@ -48,10 +50,8 @@ func Start(port int) {
 			Timeout: 1 * time.Minute,
 		}),
 	)
-
-	node.RegisterNodeServer(server, &service.NodeService{
-		Machines: make(map[string]*firecracker.Machine),
-	})
+	nodeService := service.NewNodeService(log, make(map[string]*firecracker.Machine))
+	node.RegisterNodeServer(server, nodeService)
 	if err := server.Serve(lis); err != nil {
 		log.Error(err)
 	}

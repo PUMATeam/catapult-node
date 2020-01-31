@@ -6,6 +6,7 @@ import (
 
 	"github.com/firecracker-microvm/firecracker-go-sdk"
 
+	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 
 	node "github.com/PUMATeam/catapult-node/pb"
@@ -15,15 +16,25 @@ import (
 
 type NodeService struct {
 	Machines map[string]*firecracker.Machine
+	log      *logrus.Logger
+	storage  *storage
+}
+
+func NewNodeService(log *logrus.Logger, machines map[string]*firecracker.Machine) *NodeService {
+	return &NodeService{
+		Machines: machines,
+		log:      log,
+		storage:  &storage{log: log},
+	}
 }
 
 // StartVM starts a firecracker VM with the provided configuration
 func (ns *NodeService) StartVM(ctx context.Context, cfg *node.VmConfig) (*node.VmResponse, error) {
-	log.Info("Starting VM ", cfg.GetVmID().GetValue())
+	ns.log.Info("Starting VM ", cfg.GetVmID().GetValue())
 	vmID := cfg.GetVmID().GetValue()
 
 	// tap device name would be fc-<last 6 characters of VM UUID>
-	log.Infof("Setting up network...")
+	ns.log.Infof("Setting up network...")
 	tapDeviceName := fmt.Sprintf("%s-%s", "fc", vmID[len(vmID)-6:])
 	network, err := setupNetwork(tapDeviceName)
 
@@ -64,7 +75,7 @@ func (ns *NodeService) StartVM(ctx context.Context, cfg *node.VmConfig) (*node.V
 }
 
 func (ns *NodeService) StopVM(ctx context.Context, uuid *node.UUID) (*node.Response, error) {
-	log.Debug("StopVM called on VM ", uuid.GetValue())
+	ns.log.Debug("StopVM called on VM ", uuid.GetValue())
 	v, ok := ns.Machines[uuid.GetValue()]
 	if !ok {
 		log.Errorf("VM %s not found", uuid.GetValue())
@@ -80,8 +91,8 @@ func (ns *NodeService) StopVM(ctx context.Context, uuid *node.UUID) (*node.Respo
 		}, err
 	}
 
-	log.Infof("Stopped VM %s", uuid.GetValue())
-	log.Infof("Cleaning up...")
+	ns.log.Infof("Stopped VM %s", uuid.GetValue())
+	ns.log.Infof("Cleaning up...")
 
 	vmID := uuid.GetValue()
 	deleteDevice(fmt.Sprintf("%s-%s", "fc", vmID[len(vmID)-6:]))
@@ -92,7 +103,7 @@ func (ns *NodeService) StopVM(ctx context.Context, uuid *node.UUID) (*node.Respo
 }
 
 func (ns *NodeService) ListVMs(context.Context, *empty.Empty) (*node.VmList, error) {
-	log.Debug("ListVMs called")
+	ns.log.Debug("ListVMs called")
 	vmList := new(node.VmList)
 	uuid := &node.UUID{
 		Value: "poop",
@@ -103,7 +114,7 @@ func (ns *NodeService) ListVMs(context.Context, *empty.Empty) (*node.VmList, err
 }
 
 func (ns *NodeService) CreateDrive(ctx context.Context, img *node.ImageName) (*node.DriveResponse, error) {
-	path, err := pullImage(ctx, img.GetName())
+	path, err := ns.storage.pullImage(ctx, img.GetName())
 	if err != nil {
 		return &node.DriveResponse{
 			Status: node.Status_FAILED,
@@ -112,9 +123,9 @@ func (ns *NodeService) CreateDrive(ctx context.Context, img *node.ImageName) (*n
 		}, err
 	}
 
-	path, size, err := createRootFS(path)
+	path, size, err := ns.storage.createRootFS(path)
 	if err != nil {
-		log.Error(err)
+		ns.log.Error(err)
 		return &node.DriveResponse{
 			Status: node.Status_FAILED,
 			Size:   -1,
@@ -130,7 +141,7 @@ func (ns *NodeService) CreateDrive(ctx context.Context, img *node.ImageName) (*n
 }
 
 func (ns *NodeService) ConnectVolume(ctx context.Context, vol *node.Volume) (*node.Response, error) {
-	err := mapVolume(vol.GetVolumeID(), vol.GetPoolName())
+	err := ns.storage.mapVolume(vol.GetVolumeID(), vol.GetPoolName())
 	if err != nil {
 		return &node.Response{
 			Status: node.Status_FAILED,

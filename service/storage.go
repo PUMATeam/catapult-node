@@ -17,15 +17,15 @@ import (
 	ociTools "github.com/opencontainers/image-tools/image"
 )
 
-func pullImage(ctx context.Context, imageName string) (string, error) {
+type storage struct {
+	log *log.Logger
+}
+
+func (s *storage) pullImage(ctx context.Context, imageName string) (string, error) {
 	sanitizedImageName := strings.Replace(imageName, "/", "-", -1)
 	workingDir := fmt.Sprintf("/tmp/%s/", sanitizedImageName)
 	tag := "tmp"
-	log.
-		WithContext(ctx).
-		WithField("dir", workingDir).
-		Info("Creating work dir")
-
+	s.log.Infof("Creating work dir")
 	err := os.Mkdir(workingDir, 0755)
 	if err != nil {
 		fmt.Println(err)
@@ -56,7 +56,7 @@ func pullImage(ctx context.Context, imageName string) (string, error) {
 		return "", err
 	}
 
-	fmt.Println("Copy")
+	s.log.Infof("Copying image...")
 	_, err = copy.Image(ctx,
 		policyCtx,
 		dstImageType,
@@ -69,7 +69,7 @@ func pullImage(ctx context.Context, imageName string) (string, error) {
 		return "", err
 	}
 
-	fmt.Println("UnpackLayout")
+	s.log.Infof("Unpacking layers...")
 	err = ociTools.UnpackLayout(
 		workingDir,
 		workingDir+"rootfs",
@@ -84,43 +84,42 @@ func pullImage(ctx context.Context, imageName string) (string, error) {
 	return workingDir, nil
 }
 
-func createRootFS(imagePath string) (string, int64, error) {
-	size, err := dirSize(imagePath)
+func (s *storage) createRootFS(imagePath string) (string, int64, error) {
+	size, err := s.dirSize(imagePath)
 	if err != nil {
-		fmt.Println(err)
+		s.log.Error(err)
 		return "", -1, err
 	}
 
-	fmt.Println("Create file")
-
+	s.log.Info("Creating rootfs file")
 	f, err := os.Create(path.Join(imagePath, "rootfs-file"))
 	if err != nil {
-		fmt.Println(err)
+		s.log.Error(err)
 		return "", -1, err
 	}
 
-	fmt.Println("Truncate")
+	s.log.Info("Creating roots file %s to size %d", f.Name(), size)
 	err = os.Truncate(f.Name(), size)
 	if err != nil {
-		fmt.Println(err)
+		s.log.Error(err)
 		return "", -1, err
 	}
 
-	fmt.Println("mkfs")
+	s.log.Info("Creating ext4 filesystem", f.Name(), size)
 	cmd := exec.Command("mkfs.ext4", "-F", path.Join(imagePath, "rootfs-file"))
 	err = cmd.Run()
 	if err != nil {
-		fmt.Println(err)
+		s.log.Error(err)
 		return "", -1, err
 	}
 
-	fmt.Println("mount")
 	err = os.Mkdir(path.Join(imagePath, "mnt"), 0755)
 	if err != nil {
-		fmt.Println(err)
+		s.log.Error(err)
 		return "", -1, err
 	}
 
+	s.log.Info("Mounting rootfs file", f.Name(), size)
 	cmd = exec.Command("mount",
 		"-o",
 		"loop",
@@ -132,13 +131,11 @@ func createRootFS(imagePath string) (string, int64, error) {
 		return "", -1, err
 	}
 
-	fmt.Println("cp")
 	cmd = exec.Command("cp",
 		"-r",
 		path.Join(imagePath, "rootfs", "*"),
 		path.Join(imagePath, "mnt"))
 
-	fmt.Println("umount")
 	cmd = exec.Command("umount", path.Join(imagePath, "mnt"))
 	err = cmd.Run()
 	if err != nil {
@@ -146,7 +143,6 @@ func createRootFS(imagePath string) (string, int64, error) {
 		return "", -1, err
 	}
 
-	fmt.Println("stat")
 	info, err := os.Stat(path.Join(imagePath, "rootfs-file"))
 	if err != nil {
 		fmt.Println(err)
@@ -156,19 +152,20 @@ func createRootFS(imagePath string) (string, int64, error) {
 	return path.Join(imagePath, "rootfs-file"), info.Size(), nil
 }
 
-func mapVolume(volumeID, pool string) error {
-	fmt.Println("Stat")
+func (s *storage) mapVolume(volumeID, pool string) error {
 	conf := "/etc/ceph/ceph.conf"
 	keyring := "/etc/ceph/ceph.client.admin.keyring"
 
-	cmd := exec.Command("rbd", "map", fmt.Sprintf("%s/%s", pool, volumeID), "-k", keyring, conf)
+	command := []string{"map", fmt.Sprintf("%s/%s", pool, volumeID), "-k", keyring, conf}
+	s.log.Infof("Executing command rbd-nbd with parameters %v", command)
+	cmd := exec.Command("rbd-nbd", command...)
 	err := cmd.Run()
 	// TODO: check the drive actually exists
 
 	return err
 }
 
-func dirSize(dir string) (int64, error) {
+func (s *storage) dirSize(dir string) (int64, error) {
 	var size int64
 	err := filepath.Walk(dir, func(_ string, info os.FileInfo, err error) error {
 		if err != nil {
