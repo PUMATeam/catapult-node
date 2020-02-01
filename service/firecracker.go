@@ -36,7 +36,7 @@ type fc struct {
 
 func (f *fc) runVMM(ctx context.Context,
 	vmCfg *node.VmConfig,
-	logger log.Logger) (*firecracker.Machine, error) {
+	logger *log.Logger) (*firecracker.Machine, error) {
 	if _, err := os.Stat(vmDataPath); err != nil {
 		os.Mkdir(vmDataPath, os.ModeDir)
 	}
@@ -56,7 +56,7 @@ func (f *fc) runVMM(ctx context.Context,
 	socketPath := filepath.Join(vmDataPath, vmCfg.GetVmID().GetValue())
 	os.Remove(socketPath)
 
-	log.Infof("tap device name %s", f.tapDeviceName)
+	logger.Infof("tap device name %s", f.tapDeviceName)
 	kernelArgs :=
 		fmt.Sprintf("console=ttyS0 noapic reboot=k panic=1 pci=off nomodules rw ip=%s::%s:%s::eth0:off",
 			f.ipAddress, f.bridgeIP, f.netmask)
@@ -94,16 +94,16 @@ func (f *fc) runVMM(ctx context.Context,
 		WithSocketPath(socketPath).
 		Build(ctx)
 
-	log.Infof("Creating new machine definition %v", cfg)
+	logger.Infof("Creating new machine definition %v", cfg)
 	m, err := firecracker.NewMachine(ctx,
 		cfg,
 		firecracker.WithProcessRunner(cmd),
-		firecracker.WithLogger(log.NewEntry(&logger)))
+		firecracker.WithLogger(log.NewEntry(logger)))
 	if err != nil {
 		return nil, fmt.Errorf("Failed creating machine: %s", err)
 	}
 
-	log.Info("Starting machine...")
+	logger.Info("Starting machine...")
 	errChan := make(chan error, 1)
 	go func() {
 		errChan <- m.Start(context.Background())
@@ -116,7 +116,7 @@ func (f *fc) runVMM(ctx context.Context,
 			return nil, err
 		}
 	case <-time.After(3 * time.Second):
-		log.Info("No errors after 3 seconds, assuming success")
+		logger.Info("No errors after 3 seconds, assuming success")
 	}
 
 	installSignalHandlers(ctx, m)
@@ -152,7 +152,7 @@ func installSignalHandlers(ctx context.Context, m *firecracker.Machine) {
 	}()
 }
 
-func (f *fc) readPipe(method string) {
+func (f *fc) readPipe(log *log.Logger, method string) {
 	pipePath := f.getFileNameByMethod("fifo", method)
 	logPath := f.getFileNameByMethod("log", method)
 

@@ -28,7 +28,7 @@ func (s *storage) pullImage(ctx context.Context, imageName string) (string, erro
 	s.log.Infof("Creating work dir")
 	err := os.Mkdir(workingDir, 0755)
 	if err != nil {
-		fmt.Println(err)
+		s.log.Error("Failed to create directory", err)
 		return "", err
 	}
 
@@ -38,14 +38,14 @@ func (s *storage) pullImage(ctx context.Context, imageName string) (string, erro
 
 	policyCtx, err := signature.NewPolicyContext(policy)
 	if err != nil {
-		fmt.Println(err)
+		s.log.Error("Failed to policy context", err)
 		return "", err
 	}
 
 	srcImageType, err :=
 		alltransports.ParseImageName(fmt.Sprintf("docker://%s", imageName))
 	if err != nil {
-		fmt.Println(err)
+		s.log.Error("Failed to parse image", err)
 		return "", err
 
 	}
@@ -53,19 +53,21 @@ func (s *storage) pullImage(ctx context.Context, imageName string) (string, erro
 	dstImageType, err :=
 		alltransports.ParseImageName(fmt.Sprintf("oci:/%s:%s", workingDir, tag))
 	if err != nil {
+		s.log.Error("Failed to parse image", err)
 		return "", err
 	}
 
-	s.log.Infof("Copying image...")
+	s.log.Info("Copying image...")
 	_, err = copy.Image(ctx,
 		policyCtx,
 		dstImageType,
 		srcImageType,
 		&copy.Options{
-			ReportWriter: os.Stdout,
+			ReportWriter: s.log.Out,
 		})
 
 	if err != nil {
+		s.log.Error("Failed to copy image")
 		return "", err
 	}
 
@@ -77,7 +79,7 @@ func (s *storage) pullImage(ctx context.Context, imageName string) (string, erro
 		[]string{fmt.Sprintf("name=%s", tag)})
 
 	if err != nil {
-		fmt.Println(err)
+		s.log.Error("Failed to unpack layers")
 		return "", nil
 	}
 
@@ -94,14 +96,14 @@ func (s *storage) createRootFS(imagePath string) (string, int64, error) {
 	s.log.Info("Creating rootfs file")
 	f, err := os.Create(path.Join(imagePath, "rootfs-file"))
 	if err != nil {
-		s.log.Error(err)
+		s.log.Error("Failed to create rootfs file", err)
 		return "", -1, err
 	}
 
-	s.log.Info("Creating roots file %s to size %d", f.Name(), size)
+	s.log.Infof("Creating roots file %s with size %d", f.Name(), size)
 	err = os.Truncate(f.Name(), size)
 	if err != nil {
-		s.log.Error(err)
+		s.log.Error("Failed to truncate rootfs file", err)
 		return "", -1, err
 	}
 
@@ -109,7 +111,7 @@ func (s *storage) createRootFS(imagePath string) (string, int64, error) {
 	cmd := exec.Command("mkfs.ext4", "-F", path.Join(imagePath, "rootfs-file"))
 	err = cmd.Run()
 	if err != nil {
-		s.log.Error(err)
+		s.log.Error("Failed to create filesystem", err)
 		return "", -1, err
 	}
 
@@ -127,7 +129,7 @@ func (s *storage) createRootFS(imagePath string) (string, int64, error) {
 		path.Join(imagePath, "mnt"))
 	err = cmd.Run()
 	if err != nil {
-		fmt.Println(err)
+		s.log.Error("Failed to mount rootfs file", err)
 		return "", -1, err
 	}
 
@@ -139,7 +141,7 @@ func (s *storage) createRootFS(imagePath string) (string, int64, error) {
 	cmd = exec.Command("umount", path.Join(imagePath, "mnt"))
 	err = cmd.Run()
 	if err != nil {
-		fmt.Println(err)
+		s.log.Error("Failed to unmount rootfs file", err)
 		return "", -1, err
 	}
 

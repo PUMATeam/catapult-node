@@ -21,53 +21,65 @@ type fcNetwork struct {
 	bridgeIP   string
 	netmask    string
 	macAddress string
+	log        *log.Logger
 }
 
-func createTapDevice(tapName string) (string, error) {
+func newNetworkService(log *log.Logger) *fcNetwork {
+	return &fcNetwork{
+		log: log,
+	}
+}
+
+func (fn *fcNetwork) createTapDevice(tapName string) (string, error) {
 	_, err := util.ExecuteCommand("ip", "tuntap", "add", tapName, "mode", "tap")
 	if err != nil {
+		fn.log.Error("Failed to create tap device", err)
 		return "", err
 	}
 
 	return util.ExecuteCommand("ip", "link", "set", tapName, "up")
 }
 
-func deleteDevice(deviceName string) error {
+func (fn *fcNetwork) deleteDevice(deviceName string) error {
+	fn.log.Infof("Removing tap device %s", deviceName)
 	_, err := util.ExecuteCommand("ip", "link", "del", deviceName)
 	if err != nil {
+		fn.log.Error("Failed to delete tap device", err)
 		return err
 	}
 
 	return nil
 }
 
-func addTapToBridge(tapName, bridgeName string) (string, error) {
-	return util.ExecuteCommand("brctl", "addif", bridgeName, tapName)
+func (fn *fcNetwork) addTapToBridge(tapName, bridgeName string) (string, error) {
+	return util.ExecuteCommand("ip", "ling", "set", tapName, "master", bridgeName)
 }
 
-func findAvailableIP() (string, error) {
+func (fn *fcNetwork) findAvailableIP() (string, error) {
 	// TODO handle errors
-	bridgeIP, _ := getBridge()
+	fn.log.Info("Looking for available IP address")
+
+	bridgeIP, _ := fn.getBridge()
 	if len(ips) == 0 {
 		cmd := fmt.Sprintf("nmap -v -sn -n %s -oG - | awk '/Status: Down/{print $2}'",
 			bridgeIP.String())
 		out, err := util.ExecuteCommand("bash", "-c", cmd)
 		if err != nil {
-			log.Error(err)
+			fn.log.Errorf("Failed to execute command: %s %s", cmd, err)
 			return "", err
 		}
 
-		// ignore first to addresses
+		// ignore first two addresses
 		ips = strings.Split(out, "\n")[2:]
 	}
 
 	// remove selected ip
 	ips = util.RemoveFromSlice(ips, 1).([]string)
-
+	fn.log.Errorf("Found IP: %s", ips[1])
 	return ips[1], nil
 }
 
-func getBridge() (net.Addr, error) {
+func (fn *fcNetwork) getBridge() (net.Addr, error) {
 	iface, err := net.InterfaceByName(fcBridgeName)
 	if err != nil {
 		log.Error(err)
@@ -83,7 +95,7 @@ func getBridge() (net.Addr, error) {
 	return addrs[0], nil
 }
 
-func generateMACAddress() (string, error) {
+func (fn *fcNetwork) generateMACAddress() (string, error) {
 	buf := make([]byte, 6)
 
 	_, err := rand.Read(buf)
@@ -96,8 +108,8 @@ func generateMACAddress() (string, error) {
 		buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]), nil
 }
 
-func setupNetwork(tapDeviceName string) (*fcNetwork, error) {
-	bridgeAddr, err := getBridge()
+func (fn *fcNetwork) setupNetwork(tapDeviceName string) (*fcNetwork, error) {
+	bridgeAddr, err := fn.getBridge()
 	if err != nil {
 		return nil, err
 	}
@@ -107,31 +119,31 @@ func setupNetwork(tapDeviceName string) (*fcNetwork, error) {
 		return nil, err
 	}
 
-	log.Info("Creating tap device...")
-	_, err = createTapDevice(tapDeviceName)
+	fn.log.Infof("Creating tap device %s...", tapDeviceName)
+	_, err = fn.createTapDevice(tapDeviceName)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create tap device: %s", err)
 	}
 
-	log.Info("Adding tap device to bridge...")
-	_, err = addTapToBridge(tapDeviceName, fcBridgeName)
+	fn.log.Infof("Adding tap device %s to bridge %s", tapDeviceName, fcBridgeName)
+	_, err = fn.addTapToBridge(tapDeviceName, fcBridgeName)
 
-	log.Info("Looking for an IP address")
-	ip, err := findAvailableIP()
+	fn.log.Info("Looking for an IP address")
+	ip, err := fn.findAvailableIP()
 	if err != nil {
 		return nil, fmt.Errorf("Failed to find IP address: %s", err)
 	}
 
-	log.WithFields(log.Fields{
+	fn.log.WithFields(log.Fields{
 		"IP": ip,
 	}).Info("Found IP address")
 
-	log.Info("Generating MAC address")
-	macAddress, err := generateMACAddress()
+	fn.log.Info("Generating MAC address")
+	macAddress, err := fn.generateMACAddress()
 	if err != nil {
 		return nil, fmt.Errorf("Failed to generate MAC address: %s", err)
 	}
-	log.WithFields(log.Fields{
+	fn.log.WithFields(log.Fields{
 		"MAC": macAddress,
 	}).Info("Generated MAC address")
 

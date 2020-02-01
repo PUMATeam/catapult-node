@@ -27,12 +27,9 @@ func init() {
 	// TODO make configurable
 	log = logrus.New()
 	var f *os.File
-	if _, err := os.Stat(logFile); err != nil {
-		f, err = os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0755)
-		if err != nil {
-			log.Fatal(err)
-		}
-
+	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	log.SetOutput(f)
@@ -41,6 +38,8 @@ func init() {
 
 // Start starts catapult node server
 func Start(port int) {
+	log.Infof("Starting server on port %d...", port)
+
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
@@ -50,6 +49,7 @@ func Start(port int) {
 			Timeout: 1 * time.Minute,
 		}),
 	)
+
 	nodeService := service.NewNodeService(log, make(map[string]*firecracker.Machine))
 	node.RegisterNodeServer(server, nodeService)
 	if err := server.Serve(lis); err != nil {
