@@ -52,7 +52,7 @@ func (fn *fcNetwork) deleteDevice(deviceName string) error {
 }
 
 func (fn *fcNetwork) addTapToBridge(tapName, bridgeName string) (string, error) {
-	return util.ExecuteCommand("ip", "ling", "set", tapName, "master", bridgeName)
+	return util.ExecuteCommand("ip", "link", "set", tapName, "master", bridgeName)
 }
 
 func (fn *fcNetwork) findAvailableIP() (string, error) {
