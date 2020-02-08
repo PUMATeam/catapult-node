@@ -6,6 +6,7 @@ require (
 	cloud.google.com/go v0.44.3 // indirect
 	github.com/PUMATeam/catapult v0.0.0-20190817080311-a029e8ceeedb // indirect
 	github.com/containers/image v1.5.2-0.20191003205244-4a633785f49b
+	github.com/dsnet/compress v0.0.1 // indirect
 	github.com/firecracker-microvm/firecracker-go-sdk v0.17.0
 	github.com/go-kit/kit v0.9.0
 	github.com/go-pg/pg v8.0.5+incompatible // indirect

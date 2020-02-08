@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/PUMATeam/catapult-node/util"
 	"github.com/containers/image/copy"
 	"github.com/containers/image/transports/alltransports"
 	log "github.com/sirupsen/logrus"
@@ -17,15 +18,19 @@ import (
 	ociTools "github.com/opencontainers/image-tools/image"
 )
 
+const (
+	tag = "tmp"
+)
+
 type storage struct {
 	log *log.Logger
 }
 
+// TODO create a temporary volume on the storage to handle unpacking
 func (s *storage) pullImage(ctx context.Context, imageName string) (string, error) {
 	sanitizedImageName := strings.Replace(imageName, "/", "-", -1)
-	workingDir := fmt.Sprintf("/tmp/%s/", sanitizedImageName)
-	tag := "tmp"
-	s.log.Infof("Creating work dir")
+	workingDir := fmt.Sprintf("/var/%s/", sanitizedImageName)
+	s.log.Infof("Creating work dir %s", workingDir)
 	err := os.Mkdir(workingDir, 0755)
 	if err != nil {
 		s.log.Error("Failed to create directory", err)
@@ -57,7 +62,7 @@ func (s *storage) pullImage(ctx context.Context, imageName string) (string, erro
 		return "", err
 	}
 
-	s.log.Info("Copying image...")
+	s.log.Infof("Copying image %s...", imageName)
 	_, err = copy.Image(ctx,
 		policyCtx,
 		dstImageType,
@@ -71,100 +76,78 @@ func (s *storage) pullImage(ctx context.Context, imageName string) (string, erro
 		return "", err
 	}
 
-	s.log.Infof("Unpacking layers...")
-	err = ociTools.UnpackLayout(
+	return workingDir, nil
+}
+
+func (s *storage) unpackImage(workingDir, targetDir string) error {
+	s.log.WithFields(
+		log.Fields{
+			"workingDir": workingDir,
+			"targetDir":  targetDir}).
+		Info("Unpacking layers...")
+	err := ociTools.UnpackLayout(
 		workingDir,
-		workingDir+"rootfs",
+		targetDir,
 		"",
 		[]string{fmt.Sprintf("name=%s", tag)})
 
 	if err != nil {
 		s.log.Error("Failed to unpack layers")
-		return "", nil
+		return err
 	}
 
-	return workingDir, nil
+	return nil
 }
 
-func (s *storage) createRootFS(imagePath string) (string, int64, error) {
-	size, err := s.dirSize(imagePath)
-	if err != nil {
-		s.log.Error(err)
-		return "", -1, err
-	}
-
-	s.log.Info("Creating rootfs file")
-	f, err := os.Create(path.Join(imagePath, "rootfs-file"))
-	if err != nil {
-		s.log.Error("Failed to create rootfs file", err)
-		return "", -1, err
-	}
-
-	s.log.Infof("Creating roots file %s with size %d", f.Name(), size)
-	err = os.Truncate(f.Name(), size)
-	if err != nil {
-		s.log.Error("Failed to truncate rootfs file", err)
-		return "", -1, err
-	}
-
-	s.log.Info("Creating ext4 filesystem", f.Name(), size)
-	cmd := exec.Command("mkfs.ext4", "-F", path.Join(imagePath, "rootfs-file"))
-	err = cmd.Run()
-	if err != nil {
-		s.log.Error("Failed to create filesystem", err)
-		return "", -1, err
-	}
-
-	err = os.Mkdir(path.Join(imagePath, "mnt"), 0755)
-	if err != nil {
-		s.log.Error(err)
-		return "", -1, err
-	}
-
-	s.log.Info("Mounting rootfs file", f.Name(), size)
-	cmd = exec.Command("mount",
-		"-o",
-		"loop",
-		path.Join(imagePath, "rootfs-file"),
-		path.Join(imagePath, "mnt"))
-	err = cmd.Run()
-	if err != nil {
-		s.log.Error("Failed to mount rootfs file", err)
-		return "", -1, err
-	}
-
-	cmd = exec.Command("cp",
-		"-r",
-		path.Join(imagePath, "rootfs", "*"),
-		path.Join(imagePath, "mnt"))
-
-	cmd = exec.Command("umount", path.Join(imagePath, "mnt"))
-	err = cmd.Run()
-	if err != nil {
-		s.log.Error("Failed to unmount rootfs file", err)
-		return "", -1, err
-	}
-
-	info, err := os.Stat(path.Join(imagePath, "rootfs-file"))
-	if err != nil {
-		fmt.Println(err)
-		return "", -1, err
-	}
-
-	return path.Join(imagePath, "rootfs-file"), info.Size(), nil
-}
-
-func (s *storage) mapVolume(volumeID, pool string) error {
-	conf := "/etc/ceph/ceph.conf"
-	keyring := "/etc/ceph/ceph.client.admin.keyring"
-
-	command := []string{"map", fmt.Sprintf("%s/%s", pool, volumeID), "-k", keyring, conf}
+func (s *storage) mapVolume(volumeID, pool, imagePath string) (string, error) {
+	command := []string{"map", fmt.Sprintf("%s/volume-%s", pool, volumeID)}
 	s.log.Infof("Executing command rbd-nbd with parameters %v", command)
-	cmd := exec.Command("rbd-nbd", command...)
-	err := cmd.Run()
+	out, err := util.ExecuteCommand("rbd-nbd", command...)
+	if err != nil {
+		s.log.Errorf("rbd-nbd failed %s", err)
+		return "", err
+	}
+
+	s.log.Infof("Creating ext4 filesystem on %s", out)
+	cmd := exec.Command("mkfs.ext4", "-F", out)
+	err = cmd.Run()
+	if err != nil {
+		s.log.Error("Failed to create filesystem: ", err)
+		return "", err
+	}
+
+	mountDir := path.Join("/tmp", volumeID)
+	s.log.Infof("Mounting %s on %s", out, mountDir)
+	err = os.Mkdir(mountDir, 0755)
+	cmd = exec.Command("mount", out, mountDir)
+	err = cmd.Run()
+	if err != nil {
+		s.log.Errorf("Failed to mount %s", mountDir)
+		return "", err
+	}
+
+	err = os.Remove(path.Join(mountDir, "lost+found"))
+	if err != nil {
+		s.log.Error("Failed to remove lost+found: ", err)
+		return "", err
+	}
+
+	err = s.unpackImage(imagePath, mountDir)
+	if err != nil {
+		s.log.Error("Failed to unpack image: ", err)
+		return "", err
+	}
+
+	s.log.Infof("Unmounting %s", mountDir)
+	cmd = exec.Command("umount", out)
+	err = cmd.Run()
+	if err != nil {
+		s.log.Errorf("Failed to umount %s", mountDir)
+		return "", err
+	}
 	// TODO: check the drive actually exists
 
-	return err
+	return out, nil
 }
 
 func (s *storage) dirSize(dir string) (int64, error) {

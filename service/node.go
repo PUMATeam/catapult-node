@@ -126,7 +126,7 @@ func (ns *NodeService) CreateDrive(ctx context.Context, img *node.ImageName) (*n
 		}, err
 	}
 
-	path, size, err := ns.storage.createRootFS(path)
+	size, err := ns.storage.dirSize(path)
 	if err != nil {
 		ns.log.Error(err)
 		return &node.DriveResponse{
@@ -143,15 +143,17 @@ func (ns *NodeService) CreateDrive(ctx context.Context, img *node.ImageName) (*n
 	}, err
 }
 
-func (ns *NodeService) ConnectVolume(ctx context.Context, vol *node.Volume) (*node.Response, error) {
-	err := ns.storage.mapVolume(vol.GetVolumeID(), vol.GetPoolName())
+func (ns *NodeService) ConnectVolume(ctx context.Context, vol *node.Volume) (*node.ConnectResponse, error) {
+	drive, err := ns.storage.mapVolume(vol.GetVolumeID(), vol.GetPoolName(), vol.GetImagePath())
 	if err != nil {
-		return &node.Response{
+		return &node.ConnectResponse{
+			Path:   "",
 			Status: node.Status_FAILED,
 		}, err
 	}
 
-	return &node.Response{
+	return &node.ConnectResponse{
 		Status: node.Status_SUCCESS,
+		Path:   drive,
 	}, err
 }
