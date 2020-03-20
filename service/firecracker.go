@@ -76,14 +76,18 @@ func (f *fc) runVMM(ctx context.Context,
 			MemSizeMib: firecracker.Int64(vmCfg.GetMemory()),
 			HtEnabled:  firecracker.Bool(true),
 		},
-		NetworkInterfaces: []firecracker.NetworkInterface{{
-			HostDevName: f.tapDeviceName,
-			MacAddress:  f.macAddress,
-			AllowMMDS:   true,
-		}},
+		NetworkInterfaces: firecracker.NetworkInterfaces{
+			firecracker.NetworkInterface{
+				StaticConfiguration: &firecracker.StaticNetworkConfiguration{
+					HostDevName: f.tapDeviceName,
+					MacAddress:  f.macAddress,
+				},
+				AllowMMDS: true,
+			},
+		},
+
 		// TODO move to a constant
 		// TODO extract
-
 		LogLevel:    "Debug",
 		LogFifo:     f.getFileNameByMethod("fifo", "log"),
 		MetricsFifo: f.getFileNameByMethod("fifo", "metrics"),
